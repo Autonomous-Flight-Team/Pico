@@ -6,14 +6,14 @@
 // Holds the continuously changing PID states for all planar vectors
 struct updatingState
 {
-    // PID state for the gyroscope
-    updatingVector gyroscope;
+    // PID state for the position
+    updatingVector position;
 
-    // PID state for the magnometer
-    updatingVector magnometer;
+    // PID state for the velocity
+    updatingVector velocity;
 
-    // PID state for the acceleration
-    updatingVector acceleration;
+    // PID state for the orientation
+    updatingVector orientation;
 };
 
 // This probably shouldn’t be global, but it's used to store continuously updating PID values
@@ -58,32 +58,32 @@ planarVector computePID(const planarVector &actual, const planarVector &expected
     return output;
 }
 
-/*Applies PID control across all three planar sensor vectors (gyroscope, magnometer,
-    and acceleration). Each sensor uses its own updatingVector state for storing PID
+/*Applies PID control across all three planar sensor vectors (position,velocity,
+    and orientation). Each sensor uses its own updatingVector state for storing PID
     values between function calls.
 
-    Returns a planarState containing the PID outputs for gyroscope, magnometer, and acceleration.
+    Returns a planarState containing the PID outputs for position, velocity, and orientation.
 */
 planarState plannerPid(const planarState &actual_state, const planarState &expected_state, updatingState &stateUpdate, double time)
 {
-    //TODO:Someway to update time (pointer or reference thing)
+    // TODO:Someway to update time (pointer or reference thing)
 
     // Create a return struct to hold the PID outputs for all vectors
     planarState planar_pid_output;
 
     // Perform PID computation for each vector type, computePID handles all PID math
 
-    // Gyroscope
-    planar_pid_output.gyroscope = computePID(actual_state.gyroscope, expected_state.gyroscope, stateUpdate.gyroscope, time,
-                                             Constants::gyro_kp, Constants::gyro_ki, Constants::gyro_kd);
+    // position
+    planar_pid_output.position = computePID(actual_state.position, expected_state.position, stateUpdate.position, time,
+                                            Constants::pos_kp, Constants::pos_ki, Constants::pos_kd);
 
-    // magnometer
-    planar_pid_output.magnometer = computePID(actual_state.magnometer, expected_state.magnometer, stateUpdate.magnometer, time,
-                                              Constants::mag_kp, Constants::mag_ki, Constants::mag_kd);
+    // velocity
+    planar_pid_output.velocity = computePID(actual_state.velocity, expected_state.velocity, stateUpdate.velocity, time,
+                                            Constants::vel_kp, Constants::vel_ki, Constants::vel_kd);
 
-    // accelerometer
-    planar_pid_output.acceleration = computePID(actual_state.acceleration, expected_state.acceleration, stateUpdate.acceleration, time,
-                                                Constants::accel_kp, Constants::accel_ki, Constants::accel_kd);
+    // orientation
+    planar_pid_output.orientation = computePID(actual_state.orientation, expected_state.orientation, stateUpdate.orientation, time,
+                                               Constants::ori_kp, Constants::ori_ki, Constants::ori_kd);
 
     // Return the collection of PID output vectors in a planarState
     return planar_pid_output;

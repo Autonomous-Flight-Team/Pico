@@ -9,20 +9,20 @@
 namespace Constants
 {
     // Used for the planar pid, calculating the x, y, z position
-    // Gyroscope PID constants
-    constexpr double gyro_kp = 0;
-    constexpr double gyro_ki = 0;
-    constexpr double gyro_kd = 0;
+    // Position PID constants
+    constexpr double pos_kp = 0;
+    constexpr double pos_ki = 0;
+    constexpr double pos_kd = 0;
 
-    // Magnometer PID constants
-    constexpr double mag_kp = 0;
-    constexpr double mag_ki = 0;
-    constexpr double mag_kd = 0;
+    // Velocity PID constants
+    constexpr double vel_kp = 0;
+    constexpr double vel_ki = 0;
+    constexpr double vel_kd = 0;
 
     // Accelerometer PID constants
-    constexpr double accel_kp = 0;
-    constexpr double accel_ki = 0;
-    constexpr double accel_kd = 0;
+    constexpr double ori_kp = 0;
+    constexpr double ori_ki = 0;
+    constexpr double ori_kd = 0;
 
     // Used to calculate height pid
     float height_kp = 0;
