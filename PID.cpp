@@ -89,8 +89,8 @@ planarState plannerPid(const planarState &actual_state, const planarState &expec
     return planar_pid_output;
 }
 
-int main()
+/* int main()
 {
     std::cout << "Compiled and ran";
     return 0;
-}
+} */
