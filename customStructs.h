@@ -16,21 +16,17 @@ struct planarState
     // Holds the x, y, z values of the velocity
     planarVector velocity;
 
-    // Holds the yaw, pitch, roll values of the acceleration (x, y, z)
+    // Holds the positional yaw, pitch, roll values of the acceleration (x, y, z)
     planarVector orientation; // (Yaw, pitch, roll)
+
+    // Holds the angular velocity
+    planarVector angular_vel;
 };
 
-// Holds the continuously changing PID states for one vector (x, y, z)
-struct updatingVector
+// Creates a list of the 4 motors on the drone to store the number that will control their voltage
+struct motorVoltage
 {
-    // Holds current proportional errors
-    double error_x, error_y, error_z;
-
-    // Holds previous proportional errors (used for derivative term)
-    double prev_error_x, prev_error_y, prev_error_z;
-
-    // Holds the accumulated integral terms
-    double i_x, i_y, i_z;
+    int backRight, frontRight, backLeft, frontLeft;
 };
 
 #endif

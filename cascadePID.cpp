@@ -1,23 +1,7 @@
 // Import the constants header file + libraries
-#include "PID.h"
+#include "cascadePID.h"
 #include <iostream>
 #include "customStructs.h"
-
-// Holds the continuously changing PID states for all planar vectors
-struct updatingState
-{
-    // PID state for the position
-    updatingVector position;
-
-    // PID state for the velocity
-    updatingVector velocity;
-
-    // PID state for the orientation
-    updatingVector orientation;
-};
-
-// This probably shouldn’t be global, but it's used to store continuously updating PID values
-updatingState stateUpdate;
 
 /* Performs the PID calculation for a single 3D vector (x, y, z).
     Returns a planarVector containing the PID output for x, y, and z.
@@ -58,6 +42,28 @@ planarVector computePID(const planarVector &actual, const planarVector &expected
     return output;
 }
 
+planarVector linearPositionToVelocity(planarVector positional_PID)
+{
+    // Assumes initially that the time to follow through the positional vector is t=1s
+    planarVector expected_velocity;
+    expected_velocity.x = positional_PID.x / Constants::lin_velocity_divider;
+    expected_velocity.y = positional_PID.y / Constants::lin_velocity_divider;
+    expected_velocity.z = positional_PID.z / Constants::lin_velocity_divider;
+
+    return expected_velocity;
+}
+
+planarVector angularPositionToVelocity(planarVector orientation_PID)
+{
+    // Assumes initially that the time to follow through the positional vector is t=1s
+    planarVector expected_velocity;
+    expected_velocity.x = orientation_PID.x / Constants::angular_velocity_divider;
+    expected_velocity.y = orientation_PID.y / Constants::angular_velocity_divider;
+    expected_velocity.z = orientation_PID.z / Constants::angular_velocity_divider;
+
+    return expected_velocity;
+}
+
 /*Applies PID control across all three planar sensor vectors (position,velocity,
     and orientation). Each sensor uses its own updatingVector state for storing PID
     values between function calls.
@@ -66,8 +72,9 @@ planarVector computePID(const planarVector &actual, const planarVector &expected
 */
 planarState plannerPid(const planarState &actual_state, const planarState &expected_state, updatingState &stateUpdate, double time)
 {
-    // TODO:Someway to update time (pointer or reference thing)
+    // TODO: When this function is called, please call it with the time since the last time it was called
 
+    updatingState stateUpdate;
     // Create a return struct to hold the PID outputs for all vectors
     planarState planar_pid_output;
 
@@ -77,13 +84,21 @@ planarState plannerPid(const planarState &actual_state, const planarState &expec
     planar_pid_output.position = computePID(actual_state.position, expected_state.position, stateUpdate.position, time,
                                             Constants::pos_kp, Constants::pos_ki, Constants::pos_kd);
 
+    // Get the expected velocity vector from the positional_PID
+    planarVector expected_velocity = linearPositionToVelocity(planar_pid_output.position);
+
     // velocity
-    planar_pid_output.velocity = computePID(actual_state.velocity, expected_state.velocity, stateUpdate.velocity, time,
+    planar_pid_output.velocity = computePID(actual_state.velocity, expected_velocity, stateUpdate.velocity, time,
                                             Constants::vel_kp, Constants::vel_ki, Constants::vel_kd);
 
     // orientation
     planar_pid_output.orientation = computePID(actual_state.orientation, expected_state.orientation, stateUpdate.orientation, time,
                                                Constants::ori_kp, Constants::ori_ki, Constants::ori_kd);
+
+    planarVector expected_angular_velocity = angularPositionToVelocity(planar_pid_output.orientation);
+    // Angular velocity
+    planar_pid_output.angular_vel = computePID(actual_state.angular_vel, expected_angular_velocity, stateUpdate.angular_velocity, time,
+                                               Constants::angular_vel_kp, Constants::angular_vel_ki, Constants::angular_vel_kd);
 
     // Return the collection of PID output vectors in a planarState
     return planar_pid_output;
