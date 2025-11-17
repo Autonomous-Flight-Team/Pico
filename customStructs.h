@@ -23,10 +23,4 @@ struct planarState
     planarVector angular_vel;
 };
 
-// Creates a list of the 4 motors on the drone to store the number that will control their voltage
-struct motorVoltage
-{
-    int backRight, frontRight, backLeft, frontLeft;
-};
-
 #endif

@@ -14,8 +14,9 @@ struct updatingVector
     // Holds current proportional errors
     double error_x, error_y, error_z;
 
-    // Holds previous proportional errors (used for derivative term)
-    double prev_error_x, prev_error_y, prev_error_z;
+    // Holds previous x,y,z vector (used for derivative term)
+    double prev_x, prev_y, prev_z;
+    ;
 
     // Holds the accumulated integral terms
     double i_x, i_y, i_z;
@@ -35,6 +36,22 @@ struct updatingState
     // PID State for the orientation velocity
     updatingVector angular_velocity;
 };
+
+// Clamp function to prevent overunning integral values
+// Returns the low if value is less than low and high if value is greater than high
+template <typename T>
+T clamp(T value, T low, T high)
+{
+    if (value < low)
+    {
+        return low;
+    }
+    else if (value > high)
+    {
+        return high;
+    }
+    return value;
+}
 
 // Defines constant for pid controlers
 // TODO: Tune these guys
@@ -70,6 +87,9 @@ namespace Constants
     float height_kp = 0;
     float height_ki = 0;
     float height_kd = 0;
+
+    // Used to prevent integral error values from overshooting
+    constexpr double i_max = 1;
 
 }
 
