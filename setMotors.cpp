@@ -25,20 +25,22 @@ private: // These should only be called by the class itself
         // Positive ax means going up
         // Positive yaw means turning counter clockwise
 
+        // Clamp prevents us from trying to set an impossible motor voltage, set between min and max
+
         // Creates a motor voltage vector
         motorVoltage voltageHolder{};
 
         // Front Left Motor // Spins Counter Clockwise
-        voltageHolder.frontLeft = -ax + ay + az + yaw;
+        voltageHolder.frontLeft = clamp(-ax + ay + az + yaw, motorConstanst::minMotorVoltage, motorConstanst::maxMotorVoltage);
 
         // Front Right Motor //Spins Clockwise
-        voltageHolder.frontRight = -ax - ay + az - yaw;
+        voltageHolder.frontRight = clamp(-ax - ay + az - yaw, motorConstanst::minMotorVoltage, motorConstanst::maxMotorVoltage);
 
         // Back left motor // Spins Counter Clockwise
-        voltageHolder.backLeft = ax + ay + az - yaw;
+        voltageHolder.backLeft = clamp(ax + ay + az - yaw, motorConstanst::minMotorVoltage, motorConstanst::maxMotorVoltage);
 
         // Back Right Motor // Spins Clockwise
-        voltageHolder.backRight = ax - ay + az + yaw;
+        voltageHolder.backRight = clamp(ax - ay + az + yaw, motorConstanst::minMotorVoltage, motorConstanst::maxMotorVoltage);
 
         return voltageHolder;
     }

@@ -23,4 +23,20 @@ struct planarState
     planarVector angular_vel;
 };
 
+// Clamp function to prevent overunning integral values
+// Returns the low if value is less than low and high if value is greater than high
+template <typename T>
+T clamp(T value, T low, T high)
+{
+    if (value < low)
+    {
+        return low;
+    }
+    else if (value > high)
+    {
+        return high;
+    }
+    return value;
+}
+
 #endif
