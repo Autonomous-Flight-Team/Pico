@@ -1,9 +1,10 @@
 #include <iostream>
+#include <cmath>
 
 // TODOs:
 /*
-- Add clamping to integrals
 - Write complementry filter
+- Add more flags for motor saturation
 - Write checks to stop drone from flipping
 */
 
@@ -16,16 +17,16 @@ struct linear_vector
 
 struct attitude_vector
 {
-    double roll;
-    double pitch;
+    double roll{0};
+    double pitch{0};
     double yaw{0};
-    double thrust;
+    double thrust{0};
 };
 // PID state holder
 
 struct pidHistory
 {
-    double x_error{0}, y_error{0}, z_error; // holds Previous error
+    double x_error{0}, y_error{0}, z_error{0}; // holds Previous error
     double x_integral{0}, y_integral{0}, z_integral{0};
     double x_derivative{0}, y_derivative{0}, z_derivative{0};
 };
@@ -37,11 +38,41 @@ struct motor_vector
 };
 
 // Complementry holder info, will update with Kalaman Filter but also hold estimates between calls
-
-struct complementeryFilerData
+// A Kalman filter call should also update this vector
+struct complementeryFilterData
 {
-    // Last Kalman filter calls
+    // State vector: [x, y, z, vx, vy, vz, phi, theta, psi, p, q, r
+    attitude_vector kalman_data;
 };
+
+// Helper function
+double clamp(double num, double upper_num, double lower_num)
+{
+    if (num < lower_num)
+    {
+        return lower_num;
+    }
+
+    else if (num > upper_num)
+    {
+        return upper_num;
+    }
+    else
+    {
+        return num;
+    }
+}
+
+// Clamps angles between -pi and pi
+auto wrap = [](double a)
+{
+    return atan2(sin(a), cos(a));
+};
+
+// Creates a flag to mark if motor values are maxed out
+//  If motor values are maxed out, don't update integral error
+bool maxed_motors = false;
+const double max_motor_voltage = 22.5;
 
 // Variables to be moved lator
 linear_vector expected_loc; // Comes from UI (longitude/latittude/z?)
@@ -70,30 +101,38 @@ double ar_d = 0;
 double pitch_offset = 1;
 double roll_offset = 1;
 
-// Variable boxes that need to hang around for a bit but not sure where to declare them.
-// Exist outside of the class. (Look into what happens to a variable when a class is declared)
-
-pidHistory position_history;
-pidHistory velocity_history;
-pidHistory attitude_history;
-pidHistory angular_rate_history;
 class FullPID
 {
+    // Variable boxes that need to hang around for a bit but not sure where to declare them.
+
+    pidHistory position_history;
+    pidHistory velocity_history;
+    pidHistory attitude_history;
+    pidHistory angular_rate_history;
+
 public:
     // Position PID (Other variables can be passed by reference if we need to save space) // Call every 10 Hz
     // Called immidietly after Kalman Filter output
     linear_vector positionPID(linear_vector expected_loc, linear_vector actual_loc,
                               pidHistory &position_history, double dt /*May need to be converted from Hz */)
     {
+
+        if (dt <= 0)
+        {
+            return;
+        }
         // Finds the difference between our current location and wanted location
         double error_x = expected_loc.x - actual_loc.x;
         double error_y = expected_loc.y - actual_loc.y;
         double error_z = expected_loc.z - actual_loc.z;
 
-        // Finds the integral of error
-        position_history.x_integral += error_x * dt;
-        position_history.y_integral += error_y * dt;
-        position_history.z_integral += error_z * dt;
+        // Finds/updates the integral of error
+        if (!maxed_motors)
+        {
+            position_history.x_integral += error_x * dt;
+            position_history.y_integral += error_y * dt;
+            position_history.z_integral += error_z * dt;
+        }
 
         // finds the derivative of error
         position_history.x_derivative = (error_x - position_history.x_error) / dt;
@@ -117,15 +156,22 @@ public:
     attitude_vector velcoityPID(linear_vector expected_lin_vel /*comes from position PID*/, linear_vector actual_lin_vel /*comes from Kalman filter*/,
                                 pidHistory &velocity_history, double dt /*May need to be converted from Hz */)
     {
+        if (dt <= 0)
+        {
+            return;
+        }
         // Finds the difference between our current velocity and wanted velocity
         double error_x = expected_lin_vel.x - actual_lin_vel.x;
         double error_y = expected_lin_vel.y - actual_lin_vel.y;
         double error_z = expected_lin_vel.z - actual_lin_vel.z;
 
         // Finds the integral of error
-        velocity_history.x_integral += error_x * dt;
-        velocity_history.y_integral += error_y * dt;
-        velocity_history.z_integral += error_z * dt;
+        if (!maxed_motors)
+        {
+            velocity_history.x_integral += error_x * dt;
+            velocity_history.y_integral += error_y * dt;
+            velocity_history.z_integral += error_z * dt;
+        }
 
         // finds the derivative of error
         velocity_history.x_derivative = (error_x - velocity_history.x_error) / dt;
@@ -152,37 +198,58 @@ public:
         // Thrust should stay the same
         // Atan2(y,x) will handle cases when the denominator is zero unlike atan(y/x)
 
-        double g = 9.81;
+        double g = 9.80665;
         output.pitch = pitch_offset * atan2(accel_x, g);
-        output.roll = roll_offset * atan2(accel_y, g);
-        output.thrust = accel_z; // Stays in the world plane
+        output.roll = roll_offset * -atan2(accel_y, g);
+        output.thrust = accel_z + g; // thrust needs to push against gravity //In world frame but will get converted to body frame later
 
         // set yaw, desired ψ*=atan2(v_y​,v_x​) //currently drone will face direction of travel.
-        output.yaw = atan2(expected_lin_vel.y, expected_lin_vel.x);
+        double epsilon = 1e-17;
+        if (hypot(expected_lin_vel.x, expected_lin_vel.y) > epsilon)
+        {
+            output.yaw = atan2(expected_lin_vel.y, expected_lin_vel.x);
+        }
+        else
+        {
+            output.yaw = prev_yaw; // This will be from complementary filter
+        }
 
         return output;
     }
 
     // Outputs the general idea of the attitude of the drone
     // Call after every angularRate PID
-    attitude_vector complementryFilter()
+    attitude_vector complementryFilter(attitude_vector &location) // A Kalman filter call should also update this vector
     {
+        //
     }
 
     // Outputs the expected angular rates of the drone in relation to the body RF(angular velocity vector)
     attitude_vector attitudePID(attitude_vector desired_orientation /*comes from velocity PID (Ground RF)*/, attitude_vector actual_angles /*comes from the complementry filter */,
                                 pidHistory &attitude_history, double dt)
     {
+        if (dt <= 0)
+        {
+            return;
+        }
         // Thrust will not be used here, but it will be countinued to be passed through the attitude_vector
         // Finds the difference between our wanted angular orientation and actual angular orientation
-        double error_roll = desired_orientation.roll - actual_angles.roll;
-        double error_pitch = desired_orientation.pitch - actual_angles.pitch;
-        double error_yaw = desired_orientation.yaw - actual_angles.yaw;
+
+        // Apply wraps to error to prevent saturated motors and spin
+        double error_roll = wrap(desired_orientation.roll - actual_angles.roll);
+        double error_pitch = wrap(desired_orientation.pitch - actual_angles.pitch);
+        double error_yaw = wrap(desired_orientation.yaw - actual_angles.yaw);
+        // double error_roll = desired_orientation.roll - actual_angles.roll;
+        // double error_pitch = desired_orientation.pitch - actual_angles.pitch;
+        // double error_yaw = desired_orientation.yaw - actual_angles.yaw;
 
         // Finds the integral of error
-        attitude_history.x_integral += error_roll * dt;
-        attitude_history.y_integral += error_pitch * dt;
-        attitude_history.z_integral += error_yaw * dt;
+        if (!maxed_motors)
+        {
+            attitude_history.x_integral += error_roll * dt;
+            attitude_history.y_integral += error_pitch * dt;
+            attitude_history.z_integral += error_yaw * dt;
+        }
 
         // finds the derivative of error
         attitude_history.x_derivative = (error_roll - attitude_history.x_error) / dt;
@@ -203,13 +270,17 @@ public:
         double angular_vel_yaw = a_p * error_yaw + a_i * attitude_history.z_integral + a_d * attitude_history.z_derivative;
 
         // Transforms the angular velocitys with ground RF to body RF //See (φ*, θ*, ψ*) → (p*, q*, r*) transformation matrix
-        attitude_vector angular_rate;
         angular_rate.roll = angular_vel_roll - sin(actual_angles.pitch) * angular_vel_yaw;                                                       // p*
         angular_rate.pitch = cos(actual_angles.roll) * angular_vel_pitch + cos(actual_angles.pitch) * sin(actual_angles.roll) * angular_vel_yaw; // q*
         angular_rate.yaw = -sin(actual_angles.roll) * angular_vel_pitch + cos(actual_angles.pitch) * cos(actual_angles.roll) * angular_vel_yaw;  // r*
 
         // Keep thrust in obj
-        angular_rate.thrust = desired_orientation.thrust;
+        // Thrust gets converted to drones body frame
+        double phi = actual_angles.roll;
+        double theta = actual_angles.pitch;
+
+        double thrust = desired_orientation.thrust / (cos(phi) * cos(theta));
+        angular_rate.thrust = thrust;
 
         return angular_rate;
     }
@@ -218,17 +289,24 @@ public:
     // Call as often as possible, however fast you can call gyroscope
     // Set motors immidietly after
     motor_vector angularRatePID(attitude_vector expected_rate, attitude_vector actual_rate /*comes from gyro*/,
-                                pidHistory &angular_rate_pid, double dt)
+                                pidHistory &angular_rate_history, double dt)
     {
+        if (dt <= 0)
+        {
+            return;
+        }
         // Finds the difference between angular rate and what we want angular rate to be
-        double error_roll = expected_rate.roll - actual_rate.roll;
-        double error_pitch = expected_rate.pitch - actual_rate.pitch;
-        double error_yaw = expected_rate.yaw - actual_rate.yaw;
+        double error_roll = wrap(expected_rate.roll - actual_rate.roll);
+        double error_pitch = wrap(expected_rate.pitch - actual_rate.pitch);
+        double error_yaw = wrap(expected_rate.yaw - actual_rate.yaw);
 
-        // Finds the integral of error
-        angular_rate_history.x_integral += error_roll * dt;
-        angular_rate_history.y_integral += error_pitch * dt;
-        angular_rate_history.z_integral += error_yaw * dt;
+        // Finds the integral of error if motors are not maxed out
+        if (!maxed_motors)
+        {
+            angular_rate_history.x_integral += error_roll * dt;
+            angular_rate_history.y_integral += error_pitch * dt;
+            angular_rate_history.z_integral += error_yaw * dt;
+        }
 
         // finds the derivative of error
         angular_rate_history.x_derivative = (error_roll - angular_rate_history.x_error) / dt;
@@ -246,11 +324,19 @@ public:
         double yaw = ar_p * error_yaw + ar_i * angular_rate_history.z_integral + ar_d * angular_rate_history.z_derivative;
 
         // Converts angular acceleration into motor voltages (May possibly need a constant here, not sure yet)
+        // TODO: Change clamps to
         motor_vector motor_voltage;
-        motor_voltage.front_left_motor = expected_rate.thrust + pitch + roll - yaw;
-        motor_voltage.front_right_motor = expected_rate.thrust + pitch - roll + yaw;
-        motor_voltage.back_left_motor = expected_rate.thrust - pitch + roll + yaw;
-        motor_voltage.back_right_motor = expected_rate.thrust - pitch - roll - yaw;
+        motor_voltage.front_left_motor = clamp(expected_rate.thrust + pitch + roll - yaw, max_motor_voltage, 0);
+        motor_voltage.front_right_motor = clamp(expected_rate.thrust + pitch - roll + yaw, max_motor_voltage, 0);
+        motor_voltage.back_left_motor = clamp(expected_rate.thrust - pitch + roll + yaw, max_motor_voltage, 0);
+        motor_voltage.back_right_motor = clamp(expected_rate.thrust - pitch - roll - yaw, max_motor_voltage, 0);
+
+        // Checks to see in any of the motors have a maxed out volatage, used to stop integral wind up
+        maxed_motors =
+            motor_voltage.front_left_motor == max_motor_voltage ||
+            motor_voltage.front_right_motor == max_motor_voltage ||
+            motor_voltage.back_left_motor == max_motor_voltage ||
+            motor_voltage.back_right_motor == max_motor_voltage;
 
         return motor_voltage;
     }
