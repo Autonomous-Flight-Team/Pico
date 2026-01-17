@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cmath>
+#include "pidStructs.h"
 
 // TODOs:
 /*
@@ -35,14 +36,6 @@ struct pidHistory
 struct motor_vector
 {
     double front_left_motor{0}, back_left_motor{0}, front_right_motor{0}, back_right_motor{0};
-};
-
-// Complementry holder info, will update with Kalaman Filter but also hold estimates between calls
-// A Kalman filter call should also update this vector
-struct complementeryFilterData
-{
-    // State vector: [x, y, z, vx, vy, vz, phi, theta, psi, p, q, r
-    attitude_vector kalman_data;
 };
 
 // Helper function
@@ -113,8 +106,8 @@ class FullPID
 public:
     // Position PID (Other variables can be passed by reference if we need to save space) // Call every 10 Hz
     // Called immidietly after Kalman Filter output
-    linear_vector positionPID(linear_vector expected_loc, linear_vector actual_loc,
-                              pidHistory &position_history, double dt /*May need to be converted from Hz */)
+    std::vector<double> positionPID(std::vector<double> expected_loc, std::vector<double> actual_loc,
+                                    pidHistory &position_history, double dt /*May need to be converted from Hz */)
     {
 
         if (dt <= 0)
@@ -122,9 +115,9 @@ public:
             return;
         }
         // Finds the difference between our current location and wanted location
-        double error_x = expected_loc.x - actual_loc.x;
-        double error_y = expected_loc.y - actual_loc.y;
-        double error_z = expected_loc.z - actual_loc.z;
+        double error_x = expected_loc[0] - actual_loc[0];
+        double error_y = expected_loc[1] - actual_loc[1];
+        double error_z = expected_loc[2] - actual_loc[2];
 
         // Finds/updates the integral of error
         if (!maxed_motors)
@@ -145,15 +138,15 @@ public:
         position_history.z_error = error_z;
 
         // creates the new vector
-        linear_vector output;
-        output.x = p_p * position_history.x_error + p_i * position_history.x_integral + p_d * position_history.x_derivative;
-        output.y = p_p * position_history.y_error + p_i * position_history.y_integral + p_d * position_history.y_derivative;
-        output.z = p_p * position_history.z_error + p_i * position_history.z_integral + p_d * position_history.z_derivative;
+        std::vector<double> output;
+        output[0] = p_p * position_history.x_error + p_i * position_history.x_integral + p_d * position_history.x_derivative;
+        output[1] = p_p * position_history.y_error + p_i * position_history.y_integral + p_d * position_history.y_derivative;
+        output[2] = p_p * position_history.z_error + p_i * position_history.z_integral + p_d * position_history.z_derivative;
 
         return output;
     }
     // Outputs an expected attitude for the drone //Call every 20 Hz
-    attitude_vector velcoityPID(linear_vector expected_lin_vel /*comes from position PID*/, linear_vector actual_lin_vel /*comes from Kalman filter*/,
+    attitude_vector velcoityPID(std::vector<double> expected_lin_vel /*comes from position PID*/, std::vector<double> actual_lin_vel /*comes from Kalman filter*/,
                                 pidHistory &velocity_history, double dt /*May need to be converted from Hz */)
     {
         if (dt <= 0)
@@ -161,9 +154,9 @@ public:
             return;
         }
         // Finds the difference between our current velocity and wanted velocity
-        double error_x = expected_lin_vel.x - actual_lin_vel.x;
-        double error_y = expected_lin_vel.y - actual_lin_vel.y;
-        double error_z = expected_lin_vel.z - actual_lin_vel.z;
+        double error_x = expected_lin_vel[0] - actual_lin_vel[0];
+        double error_y = expected_lin_vel[1] - actual_lin_vel[1];
+        double error_z = expected_lin_vel[2] - actual_lin_vel[2];
 
         // Finds the integral of error
         if (!maxed_motors)
@@ -205,9 +198,9 @@ public:
 
         // set yaw, desired ψ*=atan2(v_y​,v_x​) //currently drone will face direction of travel.
         double epsilon = 1e-17;
-        if (hypot(expected_lin_vel.x, expected_lin_vel.y) > epsilon)
+        if (hypot(expected_lin_vel[0], expected_lin_vel[1]) > epsilon)
         {
-            output.yaw = atan2(expected_lin_vel.y, expected_lin_vel.x);
+            output.yaw = atan2(expected_lin_vel[1], expected_lin_vel[0]);
         }
         else
         {
@@ -215,13 +208,6 @@ public:
         }
 
         return output;
-    }
-
-    // Outputs the general idea of the attitude of the drone
-    // Call after every angularRate PID
-    attitude_vector complementryFilter(attitude_vector &location) // A Kalman filter call should also update this vector
-    {
-        //
     }
 
     // Outputs the expected angular rates of the drone in relation to the body RF(angular velocity vector)
